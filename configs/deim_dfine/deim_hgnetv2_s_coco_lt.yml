@@ -3,12 +3,11 @@ __include__: [
   '../base/deim.yml'
 ]
 
-# modfied runtime.yml
+# modified runtime.yml
 print_freq: 1
 checkpoint_freq: 1
 
-output_dir: ./outputs/deim_hgnetv2_s_lvis
-
+output_dir: ./outputs/deim_hgnetv2_s_coco_lt
 
 optimizer:
   type: AdamW

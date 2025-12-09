@@ -1,6 +1,7 @@
 __include__: [
   # '../dataset/coco_detection.yml',
-  '../dataset/lvis_detection.yml',
+  # '../dataset/lvis_detection.yml',
+  '../dataset/coco_lt_detection.yml',
   '../runtime.yml',
   '../base/dataloader.yml',
   '../base/optimizer.yml',
