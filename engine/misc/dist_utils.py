@@ -25,6 +25,9 @@ from torch.utils.data import DistributedSampler
 # from torch.utils.data.dataloader import DataLoader
 from ..data import DataLoader
 
+# Global flag to track if distributed mode was successfully initialized
+_dist_initialized_successfully = False
+
 
 def setup_distributed(print_rank: int=0, print_method: str='builtin', seed: int=None, ):
     """
@@ -34,26 +37,73 @@ def setup_distributed(print_rank: int=0, print_method: str='builtin', seed: int=
         print_method, (builtin, rich)
         seed,
     """
+    global _dist_initialized_successfully
+    _dist_initialized_successfully = False
+    
     try:
         # https://pytorch.org/docs/stable/elastic/run.html
         RANK = int(os.getenv('RANK', -1))
         LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))
         WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 
+        # For single GPU, skip distributed training (not needed)
+        if WORLD_SIZE == 1:
+            enabled_dist = False
+            print('Single GPU detected, skipping distributed mode.')
+            return enabled_dist
+
+        # Determine backend: use nccl for CUDA, gloo for CPU
+        if torch.cuda.is_available():
+            backend = 'nccl'
+            # Set environment variables to help NCCL in WSL2
+            os.environ.setdefault('NCCL_DEBUG', 'WARN')
+            os.environ.setdefault('NCCL_SOCKET_IFNAME', 'lo')
+            os.environ.setdefault('NCCL_IB_DISABLE', '1')
+            os.environ.setdefault('NCCL_P2P_DISABLE', '1')
+        else:
+            backend = 'gloo'
+        
         # torch.distributed.init_process_group(backend=backend, init_method='env://')
-        torch.distributed.init_process_group(init_method='env://')
+        torch.distributed.init_process_group(backend=backend, init_method='env://')
+        
+        # Test if NCCL actually works by trying a simple operation
+        if backend == 'nccl' and torch.cuda.is_available():
+            try:
+                # Test NCCL with a simple all_reduce
+                test_tensor = torch.ones(1).cuda()
+                torch.distributed.all_reduce(test_tensor)
+                del test_tensor
+                torch.cuda.empty_cache()
+            except Exception as test_e:
+                # NCCL is broken, clean up and disable distributed
+                if torch.distributed.is_initialized():
+                    try:
+                        torch.distributed.destroy_process_group()
+                    except:
+                        pass
+                raise RuntimeError(f'NCCL test failed: {test_e}') from test_e
+        
         torch.distributed.barrier()
 
         rank = torch.distributed.get_rank()
-        torch.cuda.set_device(rank)
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.set_device(rank)
+            torch.cuda.empty_cache()
         enabled_dist = True
+        _dist_initialized_successfully = True
         if get_rank() == print_rank:
             print('Initialized distributed mode...')
 
-    except Exception:
+    except Exception as e:
         enabled_dist = False
-        print('Not init distributed mode.')
+        _dist_initialized_successfully = False
+        # Clean up any partially initialized process group
+        if torch.distributed.is_initialized():
+            try:
+                torch.distributed.destroy_process_group()
+            except:
+                pass
+        print(f'Not init distributed mode. Error: {e}')
 
     setup_print(get_rank() == print_rank, method=print_method)
     if seed is not None:
@@ -86,11 +136,14 @@ def setup_print(is_main, method='builtin'):
 
 
 def is_dist_available_and_initialized():
+    """Check if distributed mode is available and successfully initialized"""
+    global _dist_initialized_successfully
     if not torch.distributed.is_available():
         return False
     if not torch.distributed.is_initialized():
         return False
-    return True
+    # Only return True if we successfully initialized (not just partially)
+    return _dist_initialized_successfully
 
 
 @atexit.register
@@ -133,15 +186,23 @@ def warp_model(
     compile_mode: str='reduce-overhead',
     **kwargs
 ):
-    if is_dist_available_and_initialized():
+    # Only use DDP if distributed mode is successfully initialized and world_size > 1
+    if is_dist_available_and_initialized() and get_world_size() > 1:
         rank = get_rank()
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model) if sync_bn else model
         if dist_mode == 'dp':
             model = DP(model, device_ids=[rank], output_device=rank)
         elif dist_mode == 'ddp':
-            model = DDP(model, device_ids=[rank], output_device=rank, find_unused_parameters=find_unused_parameters)
+            try:
+                model = DDP(model, device_ids=[rank], output_device=rank, find_unused_parameters=find_unused_parameters)
+            except Exception as e:
+                print(f'Warning: Failed to wrap model with DDP: {e}. Using model without DDP.')
         else:
             raise AttributeError('')
+    else:
+        # For single GPU or failed distributed init, just convert sync_bn if needed
+        if sync_bn:
+            model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
 
     if compile:
         model = torch.compile(model, mode=compile_mode)
