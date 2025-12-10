@@ -1,454 +1,672 @@
-<h2 align="center">
-  DEIM: DETR with Improved Matching for Fast Convergence
-</h2>
+# DEIM-LT: Long-Tailed Object Detection Training Guide
 
-<p align="center">
-    <a href="https://github.com/ShihuaHuang95/DEIM/blob/master/LICENSE">
-        <img alt="license" src="https://img.shields.io/badge/LICENSE-Apache%202.0-blue">
-    </a>
-    <a href="https://arxiv.org/abs/2412.04234">
-        <img alt="arXiv" src="https://img.shields.io/badge/arXiv-2412.04234-red">
-    </a>
-   <a href="https://www.shihuahuang.cn/DEIM/">
-        <img alt="project webpage" src="https://img.shields.io/badge/Webpage-DEIM-purple">
-    </a>
-    <a href="https://github.com/ShihuaHuang95/DEIM/pulls">
-        <img alt="prs" src="https://img.shields.io/github/issues-pr/ShihuaHuang95/DEIM">
-    </a>
-    <a href="https://github.com/ShihuaHuang95/DEIM/issues">
-        <img alt="issues" src="https://img.shields.io/github/issues/ShihuaHuang95/DEIM?color=olive">
-    </a>
-    <a href="https://github.com/ShihuaHuang95/DEIM">
-        <img alt="stars" src="https://img.shields.io/github/stars/ShihuaHuang95/DEIM">
-    </a>
-    <a href="mailto:shihuahuang95@gmail.com">
-        <img alt="Contact Us" src="https://img.shields.io/badge/Contact-Email-yellow">
-    </a>
-</p>
-<p align="center" style="font-size: 2.0em; font-weight: bold;">
-    🎉 <strong>We’re excited to share <a href="https://intellindust-ai-lab.github.io/projects/DEIMv2/" style="color: #d9534f; text-decoration: none;">DEIMv2</a> </strong>🎉
-</p>
+This guide provides comprehensive instructions for setting up datasets, configuring training, and running experiments for the DEIM-LT long-tailed object detection framework.
 
+## Quick Start
 
-<p align="center">
-    DEIM is an advanced training framework designed to enhance the matching mechanism in DETRs, enabling faster convergence and improved accuracy. It serves as a robust foundation for future research and applications in the field of real-time object detection. 
-</p>
+**For experienced users who just need the commands:**
+
+```bash
+# 1. Setup dataset (see Dataset Setup section for details)
+# 2. Start training with persistent session
+./train_screen.sh configs/deim_dfine/deim_hgnetv2_s_coco_lt.yml
+
+# 3. Attach to session to see progress
+screen -r deim_training
+
+# 4. View logs
+tail -f outputs/deim_hgnetv2_s_coco_lt/training.log
+```
+
+**For detailed instructions, continue reading below.**
 
 ---
 
+## Table of Contents
 
-<div align="center">
-  <a href="http://www.shihuahuang.cn">Shihua Huang</a><sup>1</sup>,
-  <a href="https://scholar.google.com/citations?user=tIFWBcQAAAAJ&hl=en">Zhichao Lu</a><sup>2</sup>,
-  <a href="https://vinthony.github.io/academic/">Xiaodong Cun</a><sup>3</sup>,
-  Yongjun Yu<sup>1</sup>,
-  Xiao Zhou<sup>4</sup>, 
-  <a href="https://xishen0220.github.io">Xi Shen</a><sup>1*</sup>
-</div>
+1. [Overview](#overview)
+2. [Prerequisites](#prerequisites)
+3. [Dataset Setup](#dataset-setup)
+   - [LVIS Dataset](#lvis-dataset)
+   - [COCO-LT Dataset](#coco-lt-dataset)
+4. [Configuration Files](#configuration-files)
+   - [Dataset Configs](#dataset-configs)
+   - [Training Configs](#training-configs)
+   - [Config Hierarchy](#config-hierarchy)
+5. [Running Training](#running-training)
+   - [Basic Training](#basic-training)
+   - [Persistent Training Sessions](#persistent-training-sessions)
+   - [Resuming Training](#resuming-training)
+6. [Monitoring Training](#monitoring-training)
+7. [Troubleshooting](#troubleshooting)
+8. [Common Issues and Solutions](#common-issues-and-solutions)
 
-  
-<p align="center">
-<i>
-1. Intellindust AI Lab &nbsp; 2. City University of Hong Kong &nbsp; 3. Great Bay University &nbsp; 4. Hefei Normal University
-</i>
-</p>
+---
 
-<p align="center">
-  **📧 Corresponding author:** <a href="mailto:shenxiluc@gmail.com">shenxiluc@gmail.com</a>
-</p>
+## Overview
 
-<p align="center">
-    <a href="https://paperswithcode.com/sota/real-time-object-detection-on-coco?p=deim-detr-with-improved-matching-for-fast">
-    <img alt="sota" src="https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/deim-detr-with-improved-matching-for-fast/real-time-object-detection-on-coco">
-    </a>
-</p>
+DEIM-LT is a framework for training object detection models on long-tailed datasets. It supports:
+- **LVIS**: Large Vocabulary Instance Segmentation (1203 classes)
+- **COCO-LT**: Long-tailed version of COCO (80 classes)
+- Multiple model sizes: Small (S), Medium (M), Large (L), XLarge (X), Nano (N)
 
-<p align="center">
-<strong>If you like our work, please give us a ⭐!</strong>
-</p>
+---
 
+## Prerequisites
 
-<p align="center">
-  <img src="./figures/teaser_a.png" alt="Image 1" width="49%">
-  <img src="./figures/teaser_b.png" alt="Image 2" width="49%">
-</p>
+### Path Placeholders
 
-</details>
+Throughout this README, we use the following placeholders:
+- `{DATA_DIR}`: Your dataset directory (e.g., `/data`, `/home/user/data`, `/mnt/datasets`)
+- `{PROJECT_ROOT}`: Path to the DEIM-LT project directory (where you cloned the repository)
 
- 
-  
-## 🚀 Updates
-- [x] **\[2025.09.26\]** **DEIMv2** is now available with the [project page](https://intellindust-ai-lab.github.io/projects/DEIMv2/) and [release code](https://github.com/Intellindust-AI-Lab/DEIMv2). The series covers eight model sizes, from **X** down to **Atto**. For the **S, M, L, and X** variants, we leverage DINOv3 features (distilled or pretrained). **DEIMv2** achieves higher performance with fewer parameters and FLOPs.
-- [x] **\[2025.06.24\]** DEIMv2 is coming soon: our next-gen detection series, along with three ultra-light variants: Pico (1.5M), Femto (0.96M), and Atto (0.49M), all delivering SoTA performance. Atto, in particular, is tailored for mobile devices, achieving 23.8 AP on COCO at 320×320 resolution.
-- [x] **\[2025.03.12\]** The Object365 Pretrained [DEIM-D-FINE-X](https://drive.google.com/file/d/1RMNrHh3bYN0FfT5ZlWhXtQxkG23xb2xj/view?usp=drive_link) model is released, which achieves 59.5% AP after fine-tuning 24 COCO epochs.
-- [x] **\[2025.03.05\]** The Nano DEIM model is released.
-- [x] **\[2025.02.27\]** The DEIM paper is accepted to CVPR 2025. Thanks to all co-authors.
-- [x] **\[2024.12.26\]** A more efficient implementation of Dense O2O, achieving nearly a 30% improvement in loading speed (See [the pull request](https://github.com/ShihuaHuang95/DEIM/pull/13) for more details). Huge thanks to my colleague [Longfei Liu](https://github.com/capsule2077).
-- [x] **\[2024.12.03\]** Release DEIM series. Besides, this repo also supports the re-implmentations of [D-FINE](https://arxiv.org/abs/2410.13842) and [RT-DETR](https://arxiv.org/abs/2407.17140).
+**Important**: Replace these placeholders with your actual paths when following the instructions.
 
-## Table of Content
-* [1. Model Zoo](https://github.com/ShihuaHuang95/DEIM?tab=readme-ov-file#1-model-zoo)
-* [2. Quick start](https://github.com/ShihuaHuang95/DEIM?tab=readme-ov-file#2-quick-start)
-* [3. Usage](https://github.com/ShihuaHuang95/DEIM?tab=readme-ov-file#3-usage)
-* [4. Tools](https://github.com/ShihuaHuang95/DEIM?tab=readme-ov-file#4-tools)
-* [5. Citation](https://github.com/ShihuaHuang95/DEIM?tab=readme-ov-file#5-citation)
-* [6. Acknowledgement](https://github.com/ShihuaHuang95/DEIM?tab=readme-ov-file#6-acknowledgement)
-  
-  
-## 1. Model Zoo
+### System Requirements
+- Linux (tested on WSL2/Ubuntu)
+- CUDA-capable GPU
+- Python 3.8+
+- PyTorch with CUDA support
 
-### DEIM-D-FINE
-| Model | Dataset | AP<sup>D-FINE</sup> | AP<sup>DEIM</sup> | #Params | Latency | GFLOPs | config | checkpoint
-| :---: | :---: | :---: | :---: |  :---: | :---: | :---: | :---: | :---: 
-**N** | COCO | **42.8** | **43.0** | 4M | 2.12ms | 7 | [yml](./configs/deim_dfine/deim_hgnetv2_n_coco.yml) | [ckpt](https://drive.google.com/file/d/1ZPEhiU9nhW4M5jLnYOFwTSLQC1Ugf62e/view?usp=sharing) |
-**S** | COCO | **48.7** | **49.0** | 10M | 3.49ms | 25 | [yml](./configs/deim_dfine/deim_hgnetv2_s_coco.yml) | [ckpt](https://drive.google.com/file/d/1tB8gVJNrfb6dhFvoHJECKOF5VpkthhfC/view?usp=drive_link) |
-**M** | COCO | **52.3** | **52.7** | 19M | 5.62ms | 57 | [yml](./configs/deim_dfine/deim_hgnetv2_m_coco.yml) | [ckpt](https://drive.google.com/file/d/18Lj2a6UN6k_n_UzqnJyiaiLGpDzQQit8/view?usp=drive_link) |
-**L** | COCO | **54.0** | **54.7** | 31M | 8.07ms | 91 | [yml](./configs/deim_dfine/deim_hgnetv2_l_coco.yml) | [ckpt](https://drive.google.com/file/d/1PIRf02XkrA2xAD3wEiKE2FaamZgSGTAr/view?usp=drive_link) | 
-**X** | COCO | **55.8** | **56.5** | 62M | 12.89ms | 202 | [yml](./configs/deim_dfine/deim_hgnetv2_x_coco.yml) | [ckpt](https://drive.google.com/file/d/1dPtbgtGgq1Oa7k_LgH1GXPelg1IVeu0j/view?usp=drive_link) | 
+### Environment Setup
 
+```bash
+# Activate your conda/virtual environment
+conda activate deim  # or your environment name
 
-### DEIM-RT-DETRv2
-| Model | Dataset | AP<sup>RT-DETRv2</sup> | AP<sup>DEIM</sup> | #Params | Latency | GFLOPs | config | checkpoint
-| :---: | :---: | :---: | :---: |  :---: | :---: | :---: | :---: | :---: 
-**S** | COCO | **47.9** | **49.0** | 20M | 4.59ms | 60 | [yml](./configs/deim_rtdetrv2/deim_r18vd_120e_coco.yml) | [ckpt](https://drive.google.com/file/d/153_JKff6EpFgiLKaqkJsoDcLal_0ux_F/view?usp=drive_link) | 
-**M** | COCO | **49.9** | **50.9** | 31M | 6.40ms | 92 | [yml](./configs/deim_rtdetrv2/deim_r34vd_120e_coco.yml) | [ckpt](https://drive.google.com/file/d/1O9RjZF6kdFWGv1Etn1Toml4r-YfdMDMM/view?usp=drive_link) | 
-**M*** | COCO | **51.9** | **53.2** | 33M | 6.90ms | 100 | [yml](./configs/deim_rtdetrv2/deim_r50vd_m_60e_coco.yml) | [ckpt](https://drive.google.com/file/d/10dLuqdBZ6H5ip9BbBiE6S7ZcmHkRbD0E/view?usp=drive_link) | 
-**L** | COCO | **53.4** | **54.3** | 42M | 9.15ms | 136 | [yml](./configs/deim_rtdetrv2/deim_r50vd_60e_coco.yml) | [ckpt](https://drive.google.com/file/d/1mWknAXD5JYknUQ94WCEvPfXz13jcNOTI/view?usp=drive_link) | 
-**X** | COCO | **54.3** | **55.5** | 76M | 13.66ms | 259 | [yml](./configs/deim_rtdetrv2/deim_r101vd_60e_coco.yml) | [ckpt](https://drive.google.com/file/d/1BIevZijOcBO17llTyDX32F_pYppBfnzu/view?usp=drive_link) | 
-
-
-## 2. Quick start
-
-### Setup
-
-```shell
-conda create -n deim python=3.11.9
-conda activate deim
+# Install dependencies (if not already installed)
 pip install -r requirements.txt
 ```
 
+### Required Tools
+- `screen` or `tmux` (for persistent training sessions)
+- `gdown` (for downloading from Google Drive)
 
-### Data Preparation
+---
 
-<details>
-<summary> COCO2017 Dataset </summary>
+## Dataset Setup
 
-1. Download COCO2017 from [OpenDataLab](https://opendatalab.com/OpenDataLab/COCO_2017) or [COCO](https://cocodataset.org/#download).
-1. Modify paths in [coco_detection.yml](./configs/dataset/coco_detection.yml)
+### LVIS Dataset
 
-    ```yaml
-    train_dataloader:
-        img_folder: /data/COCO2017/train2017/
-        ann_file: /data/COCO2017/annotations/instances_train2017.json
-    val_dataloader:
-        img_folder: /data/COCO2017/val2017/
-        ann_file: /data/COCO2017/annotations/instances_val2017.json
-    ```
+#### Directory Structure
+```
+{DATA_DIR}/lvis/
+├── lvis_v1_train/
+│   ├── train2017/          # Training images (118,287 images)
+│   └── lvis_v1_train_with_filenames.json
+└── lvis_v1_val/
+    ├── val2017/             # Validation images (15,000+ images)
+    └── lvis_v1_val_with_filenames.json
+```
 
-</details>
+**Note**: Replace `{DATA_DIR}` with your actual data directory path (e.g., `/data`, `/home/user/data`, etc.)
 
-<details>
-<summary>Custom Dataset</summary>
+#### Setup Steps
 
-To train on your custom dataset, you need to organize it in the COCO format. Follow the steps below to prepare your dataset:
+1. **Download LVIS annotations**:
+   ```bash
+   # Download LVIS v1.0 annotations from the official LVIS website
+   # Place them in: {DATA_DIR}/lvis/lvis_v1_train/ and {DATA_DIR}/lvis/lvis_v1_val/
+   ```
 
-1. **Set `remap_mscoco_category` to `False`:**
+2. **Download COCO images** (LVIS uses COCO images):
+   ```bash
+   # Download COCO train2017 and val2017 images from COCO website
+   # Extract to appropriate directories
+   ```
 
-    This prevents the automatic remapping of category IDs to match the MSCOCO categories.
+3. **Verify dataset structure**:
+   ```bash
+   # Check image counts
+   ls {DATA_DIR}/lvis/lvis_v1_train/train2017/*.jpg | wc -l  # Should be ~118,287
+   ls {DATA_DIR}/lvis/lvis_v1_val/val2017/*.jpg | wc -l      # Should be ~15,000
+   
+   # Verify annotation files exist
+   ls -lh {DATA_DIR}/lvis/lvis_v1_train/lvis_v1_train_with_filenames.json
+   ls -lh {DATA_DIR}/lvis/lvis_v1_val/lvis_v1_val_with_filenames.json
+   ```
 
-    ```yaml
-    remap_mscoco_category: False
-    ```
+4. **Update paths in config**:
+   Edit `configs/dataset/lvis_detection.yml` and replace the paths with your actual dataset locations.
 
-2. **Organize Images:**
+---
 
-    Structure your dataset directories as follows:
+### COCO-LT Dataset
 
-    ```shell
-    dataset/
-    ├── images/
-    │   ├── train/
-    │   │   ├── image1.jpg
-    │   │   ├── image2.jpg
-    │   │   └── ...
-    │   ├── val/
-    │   │   ├── image1.jpg
-    │   │   ├── image2.jpg
-    │   │   └── ...
-    └── annotations/
-        ├── instances_train.json
-        ├── instances_val.json
-        └── ...
-    ```
+#### Directory Structure
+```
+{DATA_DIR}/coco/
+├── annotations/
+│   ├── coco_lt_train.json          # COCO-LT training annotations
+│   ├── instances_train2017.json    # Standard COCO training annotations
+│   └── instances_val2017.json      # Standard COCO validation annotations
+├── train2017/                      # Training images (118,287 images)
+└── val2017/                        # Validation images (5,000 images)
+```
 
-    - **`images/train/`**: Contains all training images.
-    - **`images/val/`**: Contains all validation images.
-    - **`annotations/`**: Contains COCO-formatted annotation files.
+**Note**: Replace `{DATA_DIR}` with your actual data directory path (e.g., `/data`, `/home/user/data`, etc.)
 
-3. **Convert Annotations to COCO Format:**
+#### Setup Steps
 
-    If your annotations are not already in COCO format, you'll need to convert them. You can use the following Python script as a reference or utilize existing tools:
+1. **Create directory structure**:
+   ```bash
+   mkdir -p {DATA_DIR}/coco/{annotations,train2017,val2017}
+   ```
 
-    ```python
+2. **Download COCO-LT annotations**:
+   ```bash
+   cd {DATA_DIR}/coco/annotations
+   
+   # Install gdown if not available
+   pip install gdown
+   
+   # Download COCO-LT training annotations
+   gdown https://drive.google.com/uc?id=1cQM7BclPRjikWDhaUGoJNwQD3ia4StlQ -O coco_lt_train.json
+   ```
+
+3. **Download COCO images**:
+   ```bash
+   # Download COCO train2017 and val2017 images from COCO website
+   # Extract to:
+   # - {DATA_DIR}/coco/train2017/
+   # - {DATA_DIR}/coco/val2017/
+   ```
+
+4. **Download COCO standard annotations** (for validation):
+   ```bash
+   cd {DATA_DIR}/coco/annotations
+   
+   # Download from COCO website:
+   # - instances_train2017.json
+   # - instances_val2017.json
+   ```
+
+5. **Verify dataset**:
+   ```bash
+   # Check image counts
+   ls {DATA_DIR}/coco/train2017/*.jpg | wc -l  # Should be 118,287
+   ls {DATA_DIR}/coco/val2017/*.jpg | wc -l     # Should be 5,000
+   
+   # Verify annotation files
+   ls -lh {DATA_DIR}/coco/annotations/coco_lt_train.json
+   ls -lh {DATA_DIR}/coco/annotations/instances_val2017.json
+   ```
+
+6. **Verify annotation format**:
+   ```bash
+   python3 << EOF
     import json
 
-    def convert_to_coco(input_annotations, output_annotations):
-        # Implement conversion logic here
-        pass
+   # Check COCO-LT (replace {DATA_DIR} with your path)
+   with open('{DATA_DIR}/coco/annotations/coco_lt_train.json', 'r') as f:
+       data = json.load(f)
+       print(f"COCO-LT: {len(data['categories'])} categories, {len(data['images'])} images, {len(data['annotations'])} annotations")
+   
+   # Check COCO val
+   with open('{DATA_DIR}/coco/annotations/instances_val2017.json', 'r') as f:
+       data = json.load(f)
+       print(f"COCO Val: {len(data['categories'])} categories, {len(data['images'])} images")
+   EOF
+   ```
 
-    if __name__ == "__main__":
-        convert_to_coco('path/to/your_annotations.json', 'dataset/annotations/instances_train.json')
-    ```
+---
 
-4. **Update Configuration Files:**
+## Configuration Files
 
-    Modify your [custom_detection.yml](./configs/dataset/custom_detection.yml).
+### Dataset Configs
 
-    ```yaml
+Dataset configurations define the dataset paths, number of classes, and data loading settings.
+
+**Location**: `configs/dataset/`
+
+#### LVIS Detection Config (`lvis_detection.yml`)
+
+   
+
+#### COCO-LT Detection Config (`coco_lt_detection.yml`)
+
+```yaml
     task: detection
 
     evaluator:
-      type: CocoEvaluator
-      iou_types: ['bbox', ]
+    type: CocoEvaluator
+    iou_types: ['bbox', ]
 
-    num_classes: 777 # your dataset classes
+    num_classes: 80  # COCO-LT has 80 classes
     remap_mscoco_category: False
 
-    train_dataloader:
-      type: DataLoader
-      dataset:
+        train_dataloader:
+    type: DataLoader
+    dataset:
         type: CocoDetection
-        img_folder: /data/yourdataset/train
-        ann_file: /data/yourdataset/train/train.json
+        img_folder: {DATA_DIR}/coco/train2017
+        ann_file: {DATA_DIR}/coco/annotations/coco_lt_train.json
         return_masks: False
-        transforms:
-          type: Compose
-          ops: ~
-      shuffle: True
-      num_workers: 4
-      drop_last: True
-      collate_fn:
-        type: BatchImageCollateFunction
+    shuffle: True
+    num_workers: 4
+    drop_last: True
 
     val_dataloader:
-      type: DataLoader
-      dataset:
+    type: DataLoader
+    dataset:
         type: CocoDetection
-        img_folder: /data/yourdataset/val
-        ann_file: /data/yourdataset/val/ann.json
+        img_folder: {DATA_DIR}/coco/val2017
+        ann_file: {DATA_DIR}/coco/annotations/instances_val2017.json
         return_masks: False
-        transforms:
-          type: Compose
-          ops: ~
-      shuffle: False
-      num_workers: 4
-      drop_last: False
-      collate_fn:
-        type: BatchImageCollateFunction
-    ```
-
-</details>
-
-
-## 3. Usage
-<details open>
-<summary> COCO2017 </summary>
-
-1. Training
-```shell
-CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --master_port=7777 --nproc_per_node=4 train.py -c configs/deim_dfine/deim_hgnetv2_${model}_coco.yml --use-amp --seed=0
+    shuffle: False
+    num_workers: 4
+    drop_last: False
 ```
 
-<!-- <summary>2. Testing </summary> -->
-2. Testing
-```shell
-CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --master_port=7777 --nproc_per_node=4 train.py -c configs/deim_dfine/deim_hgnetv2_${model}_coco.yml --test-only -r model.pth
+**Key Parameters**:
+- `num_classes`: Number of classes (80 for COCO-LT)
+- `remap_mscoco_category`: Set to `False` (dataset handles category ID mapping automatically)
+
+---
+
+### Training Configs
+
+Training configurations define model architecture, optimizer, learning rate schedule, and training hyperparameters.
+
+**Location**: `configs/deim_dfine/`
+
+#### Example: COCO-LT Small Model (`deim_hgnetv2_s_coco_lt.yml`)
+
+```yaml
+    __include__: [
+    './dfine_hgnetv2_s_coco.yml',
+    '../base/deim.yml'
+    ]
+
+    # Modified runtime settings
+    print_freq: 1          # Print training stats every N iterations
+    checkpoint_freq: 1     # Save checkpoint every N epochs
+
+    output_dir: ./outputs/deim_hgnetv2_s_coco_lt
+
+        optimizer:
+        type: AdamW
+        params:
+            -
+        params: '^(?=.*backbone)(?!.*bn).*$'  # Backbone (non-BN layers)
+        lr: 0.0002
+            -
+        params: '^(?=.*(?:norm|bn)).*$'       # Normalization layers
+            weight_decay: 0.
+    lr: 0.0004           # Main learning rate
+        betas: [0.9, 0.999]
+    weight_decay: 0.0001
+
+    # Training epochs
+    epoches: 132  # 120 + 4n format
+
+    # Learning rate scheduler
+    flat_epoch: 64    # Flat learning rate for first N epochs
+    no_aug_epoch: 12  # No augmentation for last N epochs
+
+    # Data augmentation
+        train_dataloader:
+        dataset:
+            transforms:
+        policy:
+            epoch: [4, 64, 120]  # Augmentation policy epochs
+        collate_fn:
+        mixup_epochs: [4, 64]    # MixUp active during these epochs
+        stop_epoch: 120          # Stop augmentation at this epoch
+        total_batch_size: 8        # Total batch size (across all GPUs)
+
+    val_dataloader:
+        total_batch_size: 8        # Validation batch size
 ```
 
-<!-- <summary>3. Tuning </summary> -->
-3. Tuning
-```shell
-CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --master_port=7777 --nproc_per_node=4 train.py -c configs/deim_dfine/deim_hgnetv2_${model}_coco.yml --use-amp --seed=0 -t model.pth
+**Key Parameters**:
+- `__include__`: Base configs to inherit from
+- `output_dir`: Where to save checkpoints and logs
+- `total_batch_size`: Total batch size (will be divided by number of GPUs)
+- `epoches`: Total training epochs
+- `print_freq`: How often to print training stats
+- `checkpoint_freq`: How often to save checkpoints
+
+#### Available Model Configs
+
+| Config File | Model Size | Dataset | Classes |
+|------------|------------|---------|---------|
+| `deim_hgnetv2_s_lvis.yml` | Small | LVIS | 1203 |
+| `deim_hgnetv2_s_coco_lt.yml` | Small | COCO-LT | 80 |
+| `deim_hgnetv2_n_coco_lt.yml` | Nano | COCO-LT | 80 |
+| `deim_hgnetv2_m_coco.yml` | Medium | COCO | 80 |
+| `deim_hgnetv2_l_coco.yml` | Large | COCO | 80 |
+| `deim_hgnetv2_x_coco.yml` | XLarge | COCO | 80 |
+
+---
+
+### Config Hierarchy
+
+The configuration system uses YAML file inclusion with hierarchical structure:
+
 ```
-</details>
-
-<details>
-<summary> Customizing Batch Size </summary>
-
-For example, if you want to double the total batch size when training D-FINE-L on COCO2017, here are the steps you should follow:
-
-1. **Modify your [dataloader.yml](./configs/base/dataloader.yml)** to increase the `total_batch_size`:
-
-    ```yaml
-    train_dataloader:
-        total_batch_size: 64  # Previously it was 32, now doubled
-    ```
-
-2. **Modify your [deim_hgnetv2_l_coco.yml](./configs/deim_dfine/deim_hgnetv2_l_coco.yml)**. Here’s how the key parameters should be adjusted:
-
-    ```yaml
-    optimizer:
-    type: AdamW
-    params:
-        -
-        params: '^(?=.*backbone)(?!.*norm|bn).*$'
-        lr: 0.000025  # doubled, linear scaling law
-        -
-        params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn)).*$'
-        weight_decay: 0.
-
-    lr: 0.0005  # doubled, linear scaling law
-    betas: [0.9, 0.999]
-    weight_decay: 0.0001  # need a grid search
-
-    ema:  # added EMA settings
-        decay: 0.9998  # adjusted by 1 - (1 - decay) * 2
-        warmups: 500  # halved
-
-    lr_warmup_scheduler:
-        warmup_duration: 250  # halved
-    ```
-
-</details>
-
-
-<details>
-<summary> Customizing Input Size </summary>
-
-If you'd like to train **DEIM** on COCO2017 with an input size of 320x320, follow these steps:
-
-1. **Modify your [dataloader.yml](./configs/base/dataloader.yml)**:
-
-    ```yaml
-
-    train_dataloader:
-    dataset:
-        transforms:
-            ops:
-                - {type: Resize, size: [320, 320], }
-    collate_fn:
-        base_size: 320
-    dataset:
-        transforms:
-            ops:
-                - {type: Resize, size: [320, 320], }
-    ```
-
-2. **Modify your [dfine_hgnetv2.yml](./configs/base/dfine_hgnetv2.yml)**:
-
-    ```yaml
-    eval_spatial_size: [320, 320]
-    ```
-
-</details>
-
-## 4. Tools
-<details>
-<summary> Deployment </summary>
-
-<!-- <summary>4. Export onnx </summary> -->
-1. Setup
-```shell
-pip install onnx onnxsim
+deim_hgnetv2_s_coco_lt.yml
+├── dfine_hgnetv2_s_coco.yml
+│   ├── lvis_detection.yml (or coco_lt_detection.yml)
+│   ├── runtime.yml
+│   ├── base/dataloader.yml
+│   ├── base/optimizer.yml
+│   └── base/dfine_hgnetv2.yml
+└── base/deim.yml
 ```
 
-2. Export onnx
-```shell
-python tools/deployment/export_onnx.py --check -c configs/deim_dfine/deim_hgnetv2_${model}_coco.yml -r model.pth
+**Important**: Later files override earlier ones. Settings in your main config file override everything.
+
+---
+
+## Running Training
+
+### Basic Training
+
+#### Direct Training (for testing)
+
+```bash
+cd {PROJECT_ROOT}  # Navigate to DEIM-LT project directory
+
+# Set NCCL environment variables (WSL2 compatibility)
+export NCCL_DEBUG=WARN
+export NCCL_SOCKET_IFNAME=lo
+export NCCL_IB_DISABLE=1
+export NCCL_P2P_DISABLE=1
+
+# Run training
+CUDA_VISIBLE_DEVICES=0 torchrun --master_port=7777 --nproc_per_node=1 \
+    train.py -c configs/deim_dfine/deim_hgnetv2_s_coco_lt.yml --seed=0
 ```
 
-3. Export [tensorrt](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html)
-```shell
-trtexec --onnx="model.onnx" --saveEngine="model.engine" --fp16
+#### Using the Training Script
+
+```bash
+cd {PROJECT_ROOT}
+./train.sh
 ```
 
-</details>
+**Note**: This will stop if your SSH connection is lost. Use persistent sessions for long training jobs.
 
-<details>
-<summary> Inference (Visualization) </summary>
+---
 
+### Persistent Training Sessions
 
-1. Setup
-```shell
-pip install -r tools/inference/requirements.txt
+For long training jobs, use persistent sessions that survive SSH disconnections. 
+
+**See [README_TRAINING.md](README_TRAINING.md) for detailed instructions** on using screen, tmux, or nohup for persistent training sessions.
+
+Quick reference:
+- **Screen**: `./train_screen.sh [config_file] [session_name]`
+- **Tmux**: `./train_tmux.sh [config_file] [session_name]`
+- **Nohup**: `./train_nohup.sh [config_file]`
+
+---
+
+### Resuming Training
+
+To resume from a checkpoint:
+
+1. **Edit the training script** or create a resume script:
+
+```bash
+# Example: Resume from last checkpoint
+cd {PROJECT_ROOT}
+CUDA_VISIBLE_DEVICES=0 torchrun --master_port=7777 --nproc_per_node=1 \
+    train.py -c configs/deim_dfine/deim_hgnetv2_s_coco_lt.yml \
+    --seed=0 \
+    -r outputs/deim_hgnetv2_s_coco_lt/last.pth
 ```
 
+2. **Or modify the config file** to include resume path:
 
-<!-- <summary>5. Inference </summary> -->
-2. Inference (onnxruntime / tensorrt / torch)
-
-Inference on images and videos is now supported.
-```shell
-python tools/inference/onnx_inf.py --onnx model.onnx --input image.jpg  # video.mp4
-python tools/inference/trt_inf.py --trt model.engine --input image.jpg
-python tools/inference/torch_inf.py -c configs/deim_dfine/deim_hgnetv2_${model}_coco.yml -r model.pth --input image.jpg --device cuda:0
-```
-</details>
-
-<details>
-<summary> Benchmark </summary>
-
-1. Setup
-```shell
-pip install -r tools/benchmark/requirements.txt
+```yaml
+    resume: outputs/deim_hgnetv2_s_coco_lt/last.pth
 ```
 
-<!-- <summary>6. Benchmark </summary> -->
-2. Model FLOPs, MACs, and Params
-```shell
-python tools/benchmark/get_info.py -c configs/deim_dfine/deim_hgnetv2_${model}_coco.yml
+3. **Checkpoint files**:
+   - `last.pth`: Latest checkpoint
+   - `epoch_*.pth`: Epoch-specific checkpoints (if `checkpoint_freq: 1`)
+
+---
+
+## Monitoring Training
+
+### View Logs
+
+```bash
+# Real-time log viewing
+tail -f outputs/deim_hgnetv2_s_coco_lt/training.log
+
+# Last 100 lines
+tail -n 100 outputs/deim_hgnetv2_s_coco_lt/training.log
+
+# Search for errors
+grep -i error outputs/deim_hgnetv2_s_coco_lt/training.log
+
+# Search for specific metrics
+grep "loss" outputs/deim_hgnetv2_s_coco_lt/training.log | tail -20
 ```
 
-2. TensorRT Latency
-```shell
-python tools/benchmark/trt_benchmark.py --COCO_dir path/to/COCO2017 --engine_dir model.engine
-```
-</details>
+### Check GPU Usage
 
-<details>
-<summary> Fiftyone Visualization  </summary>
+```bash
+# Continuous monitoring
+watch -n 1 nvidia-smi
 
-1. Setup
-```shell
-pip install fiftyone
-```
-4. Voxel51 Fiftyone Visualization ([fiftyone](https://github.com/voxel51/fiftyone))
-```shell
-python tools/visualization/fiftyone_vis.py -c configs/deim_dfine/deim_hgnetv2_${model}_coco.yml -r model.pth
-```
-</details>
+# One-time check
+nvidia-smi
 
-<details>
-<summary> Others </summary>
-
-1. Auto Resume Training
-```shell
-bash reference/safe_training.sh
+# Check GPU memory usage
+nvidia-smi --query-gpu=memory.used,memory.total --format=csv
 ```
 
-2. Converting Model Weights
-```shell
-python reference/convert_weight.py model.pth
+### Check Training Status
+
+```bash
+# For screen/tmux
+screen -ls    # or tmux ls
+
+# For nohup
+ps -p $(cat outputs/deim_hgnetv2_s_coco_lt/training.pid)
+
+# Check if process is using GPU
+nvidia-smi | grep python
 ```
-</details>
 
+### Monitor Training Metrics
 
-## 5. Citation
-If you use `DEIM` or its methods in your work, please cite the following BibTeX entries:
-<details open>
-<summary> bibtex </summary>
+Training logs include:
+- Loss values (classification, bbox, giou, etc.)
+- Learning rate schedule
+- Epoch progress
+- Validation metrics (if validation is enabled)
 
-```latex
-@misc{huang2024deim,
-      title={DEIM: DETR with Improved Matching for Fast Convergence},
-      author={Shihua, Huang and Zhichao, Lu and Xiaodong, Cun and Yongjun, Yu and Xiao, Zhou and Xi, Shen},
-      booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
-      year={2025},
-}
+---
+
+## Troubleshooting
+
+### Common Issues
+
+#### 1. CUDA Out of Memory
+
+**Symptoms**: `RuntimeError: CUDA out of memory`
+
+**Solutions**:
+- Reduce `total_batch_size` in config
+- Reduce image size in transforms
+- Use gradient accumulation (if supported)
+
+```yaml
+train_dataloader:
+  total_batch_size: 4  # Reduce from 8
 ```
-</details>
 
-## 6. Acknowledgement
-Our work is built upon [D-FINE](https://github.com/Peterande/D-FINE) and [RT-DETR](https://github.com/lyuwenyu/RT-DETR).
+#### 2. Dataset Not Found
 
-✨ Feel free to contribute and reach out if you have any questions! ✨
+**Symptoms**: `FileNotFoundError: No such file or directory`
+
+**Solutions**:
+- Verify dataset paths in config files
+- Check that images and annotations exist
+- Ensure paths are absolute or relative to project root
+
+```bash
+# Verify paths (replace {DATA_DIR} with your actual path)
+ls -lh {DATA_DIR}/coco/train2017 | head -5
+ls -lh {DATA_DIR}/coco/annotations/coco_lt_train.json
+```
+
+#### 3. Class Index Mismatch
+
+**Symptoms**: `CUDA error: device-side assert triggered` or `indexSelectLargeIndex: Assertion failed`
+
+**Solutions**:
+- Ensure `num_classes` matches your dataset
+- Check `remap_mscoco_category` setting
+- Verify annotation file format
+
+```yaml
+# For COCO-LT
+num_classes: 80
+remap_mscoco_category: False
+
+# For LVIS
+num_classes: 1203
+remap_mscoco_category: False
+```
+
+#### 4. NCCL Errors (WSL2)
+
+**Symptoms**: `NCCL error` or distributed training failures
+
+**Solutions**:
+- Use the provided NCCL environment variables
+- Ensure single GPU training uses `--nproc_per_node=1`
+- Check WSL2 network configuration
+
+```bash
+export NCCL_DEBUG=WARN
+export NCCL_SOCKET_IFNAME=lo
+export NCCL_IB_DISABLE=1
+export NCCL_P2P_DISABLE=1
+```
+
+#### 5. Screen/Tmux Permission Errors
+
+**Symptoms**: `Cannot make directory '/run/screen': Permission denied`
+
+**Solutions**:
+- The scripts automatically handle this by using `$HOME/.screen`
+- If issues persist, manually set:
+
+```bash
+export SCREENDIR="$HOME/.screen"
+mkdir -p "$SCREENDIR"
+chmod 700 "$SCREENDIR"
+```
+
+---
+
+## Common Issues and Solutions
+
+### Issue: Training Stops When SSH Disconnects
+
+**Solution**: Always use persistent sessions (`train_screen.sh`, `train_tmux.sh`, or `train_nohup.sh`)
+
+### Issue: Can't Attach to Screen Session
+
+**Solution**: 
+```bash
+# Force attach (if session is attached elsewhere)
+screen -r -d deim_training
+```
+
+### Issue: Port Already in Use
+
+**Symptoms**: `Address already in use` for port 7777
+
+**Solution**:
+```bash
+# Use a different port
+CUDA_VISIBLE_DEVICES=0 torchrun --master_port=7778 --nproc_per_node=1 train.py ...
+```
+
+### Issue: Config Merge Conflicts
+
+**Symptoms**: `AssertionError: batch_size or total_batch_size should be choosed one`
+
+**Solution**: Ensure only one batch size parameter is set:
+```yaml
+train_dataloader:
+  total_batch_size: 8  # Use this, not batch_size
+```
+
+### Issue: Slow Data Loading
+
+**Solution**:
+- Increase `num_workers` (but not more than CPU cores)
+- Use SSD storage for datasets
+- Pre-load dataset into memory (if enough RAM)
+
+```yaml
+train_dataloader:
+  num_workers: 8  # Increase if you have more CPU cores
+```
+
+---
+
+## Quick Reference
+
+### Training Commands
+
+```bash
+# Quick start (COCO-LT)
+cd {PROJECT_ROOT}
+./train_screen.sh
+
+# LVIS training
+./train_screen.sh configs/deim_dfine/deim_hgnetv2_s_lvis.yml
+
+# Attach to session
+screen -r deim_training
+
+# View logs
+tail -f outputs/deim_hgnetv2_s_coco_lt/training.log
+```
+
+**Note**: For detailed persistent training instructions, see [README_TRAINING.md](README_TRAINING.md)
+
+### Config File Locations
+
+- **Dataset configs**: `configs/dataset/`
+- **Training configs**: `configs/deim_dfine/`
+- **Base configs**: `configs/base/`
+
+### Output Locations
+
+- **Checkpoints**: `outputs/{config_name}/`
+- **Logs**: `outputs/{config_name}/training.log`
+- **TensorBoard logs**: `outputs/{config_name}/summary/` (if enabled)
+
+---
+
+## Additional Resources
+
+- **Model Architecture**: See `engine/deim/` for model implementations
+- **Data Processing**: See `engine/data/` for dataset and transform implementations
+- **Training Loop**: See `engine/solver/` for training logic
+
+---
+
+## Support
+
+For issues or questions:
+1. Check this README and troubleshooting section
+2. Review training logs for error messages
+3. Verify dataset setup and config file paths
+4. Check GPU availability and CUDA installation
+
+---
+
+**Last Updated**: December 2024
