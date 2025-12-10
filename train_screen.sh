@@ -2,7 +2,7 @@
 # Training script with screen session for persistent SSH connections
 # Usage: ./train_screen.sh [config_file] [session_name]
 
-CONFIG=${1:-"configs/deim_dfine/deim_hgnetv2_s_coco_lt.yml"}
+CONFIG=${1:-"configs/deim_dfine/deim_hgnetv2_n_coco_lt.yml"}  # Changed from _s_ to _n_
 SESSION_NAME=${2:-"deim_training"}
 LOG_DIR="./outputs/$(basename $CONFIG .yml)"
 LOG_FILE="${LOG_DIR}/training.log"
@@ -24,9 +24,12 @@ export NCCL_SOCKET_IFNAME=lo
 export NCCL_IB_DISABLE=1
 export NCCL_P2P_DISABLE=1
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Start training in a screen session
 SCREENDIR="$HOME/.screen" screen -S "$SESSION_NAME" -dm bash -c "
-cd /home/yj/ML/DEIM-LT
+cd \"$SCRIPT_DIR\"
 export SCREENDIR=\"\$HOME/.screen\"
 echo '========================================'
 echo 'Training started at \$(date)'

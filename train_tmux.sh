@@ -23,8 +23,11 @@ export NCCL_SOCKET_IFNAME=lo
 export NCCL_IB_DISABLE=1
 export NCCL_P2P_DISABLE=1
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Start training in a tmux session
-tmux new-session -d -s "$SESSION_NAME" -c /home/yj/ML/DEIM-LT "
+tmux new-session -d -s "$SESSION_NAME" -c "$SCRIPT_DIR" "
 echo '========================================'
 echo 'Training started at $(date)'
 echo "Config: $CONFIG"

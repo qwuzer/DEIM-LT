@@ -29,8 +29,11 @@ if [ -f "$PID_FILE" ]; then
     fi
 fi
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Start training with nohup
-cd /home/yj/ML/DEIM-LT
+cd "$SCRIPT_DIR"
 nohup bash -c "
 CUDA_VISIBLE_DEVICES=0 torchrun --master_port=7777 --nproc_per_node=1 train.py -c $CONFIG --seed=0
 " > "$LOG_FILE" 2>&1 &
