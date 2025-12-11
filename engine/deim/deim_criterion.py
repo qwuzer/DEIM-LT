@@ -39,6 +39,7 @@ class DEIMCriterion(nn.Module):
         share_matched_indices=False,
         mal_alpha=None,
         use_uni_set=True,
+        efl_scale_factor=8.0,
         ):
         """Create the criterion.
         Parameters:
@@ -64,6 +65,13 @@ class DEIMCriterion(nn.Module):
         self.num_pos, self.num_neg = None, None
         self.mal_alpha = mal_alpha
         self.use_uni_set = use_uni_set
+        
+        # MA-EFL specific buffers
+        self.efl_scale_factor = efl_scale_factor
+        self.register_buffer('pos_grad', torch.zeros(self.num_classes))
+        self.register_buffer('neg_grad', torch.zeros(self.num_classes))
+        self.register_buffer('pos_neg', torch.ones(self.num_classes))
+        self.register_buffer('class_counts', torch.zeros(self.num_classes))
 
     def loss_labels_focal(self, outputs, targets, indices, num_boxes):
         assert 'pred_logits' in outputs
@@ -131,14 +139,60 @@ class DEIMCriterion(nn.Module):
         target_score = target_score_o.unsqueeze(-1) * target
 
         pred_score = F.sigmoid(src_logits).detach()
-        target_score = target_score.pow(self.gamma)
-        if self.mal_alpha != None:
-            weight = self.mal_alpha * pred_score.pow(self.gamma) * (1 - target) + target
-        else:
-            weight = pred_score.pow(self.gamma) * (1 - target) + target
 
-        # print(" ### DEIM-gamma{}-alpha{} ### ".format(self.gamma, self.mal_alpha))
-        loss = F.binary_cross_entropy_with_logits(src_logits, target_score, weight=weight, reduction='none')
+        # --- MA-EFL Implementation ---
+        # 1. Calculate Gradients and Update Stats (EFL Principle)
+        with torch.no_grad():
+            # Approximate gradient: |p - q|
+            grad = torch.abs(pred_score - target_score)
+            
+            # Aggregate per class
+            pos_grad_batch = (grad * target).sum(dim=(0, 1)) # (C,)
+            neg_grad_batch = (grad * (1 - target)).sum(dim=(0, 1)) # (C,)
+            class_counts_batch = target.sum(dim=(0, 1)) # (C,)
+
+            if is_dist_available_and_initialized():
+                torch.distributed.all_reduce(pos_grad_batch)
+                torch.distributed.all_reduce(neg_grad_batch)
+                torch.distributed.all_reduce(class_counts_batch)
+
+            self.pos_grad += pos_grad_batch
+            self.neg_grad += neg_grad_batch
+            self.class_counts += class_counts_batch
+            
+            # Update pos_neg ratio for dynamic gamma
+            self.pos_neg = torch.clamp(self.pos_grad / (self.neg_grad + 1e-10), min=0, max=1)
+
+        # 2. Calculate Parameters
+        # Dynamic Gamma (gamma_j)
+        map_val = 1 - self.pos_neg.detach()
+        dy_gamma = self.gamma + self.efl_scale_factor * map_val # (C,)
+        
+        # Weighting Factor (w_j)
+        max_count = self.class_counts.max()
+        if max_count == 0:
+            w_j = torch.ones_like(self.class_counts)
+        else:
+            # Option A: Smoothing with sqrt to prevent overfitting
+            w_j = (max_count / (self.class_counts + 1e-10)).sqrt() # (C,)
+        
+        # Expand parameters to (B, N, C)
+        dy_gamma = dy_gamma.view(1, 1, -1).expand_as(pred_score)
+        w_j = w_j.view(1, 1, -1).expand_as(pred_score)
+
+        # 3. Compute Loss
+        # Target for BCE is q^gamma for positives, 0 for negatives
+        target_score_pow = target_score.pow(self.gamma)
+        
+        # Weights
+        # Positive: w_j
+        # Negative: w_j * p^gamma_j
+        weight_pos = w_j
+        weight_neg = w_j * pred_score.pow(dy_gamma)
+        
+        weight = weight_pos * target + weight_neg * (1 - target)
+
+        loss = F.binary_cross_entropy_with_logits(src_logits, target_score_pow, weight=weight, reduction='none')
         loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
         return {'loss_mal': loss}
 
